@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Killer Critters</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>
+    // Insert hack to make sound autoplay on Chrome as soon as the user interacts with the tab:
+    // https://developers.google.com/web/updates/2018/11/web-audio-autoplay#moving-forward
+
+    // the following function keeps track of all AudioContexts and resumes them on the first user
+    // interaction with the page. If the function is called and all contexts are already running,
+    // it will remove itself from all event listeners.
+    (function () {
+      const audioContextList = [];
+
+      // A proxy object to intercept AudioContexts and
+      // add them to the array for tracking and resuming later
+      self.AudioContext = new Proxy(self.AudioContext, {
+        construct(target, args) {
+          const result = new target(...args);
+          audioContextList.push(result);
+          return result;
+        },
+      });
+
+      function resumeAllContexts() {
+        let allRunning = true;
+        audioContextList.forEach((context) => {
+          if (context.state !== "running") {
+            context.resume();
+            allRunning = false;
+          }
+        });
+        return allRunning;
+      }
+
+      function handleUserInteraction(e) {
+        if (resumeAllContexts()) {
+          window.removeEventListener('mousedown', handleUserInteraction, true);
+          window.removeEventListener('keydown', handleUserInteraction, true);
+          window.removeEventListener('touchstart', handleUserInteraction, true);
+        }
+      }
+
+      window.addEventListener('mousedown', handleUserInteraction, { capture: true, passive: true });
+      window.addEventListener('keydown', handleUserInteraction, { capture: true, passive: true });
+      window.addEventListener('touchstart', handleUserInteraction, { capture: true, passive: true });
+    })();
+  </script>
+
+  <script type="module">
+    import init from './web-dist/killer-critters.js'
+    init()
+  </script>
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="canvas_killer_critters"></canvas>
+</body>
+
+</html>

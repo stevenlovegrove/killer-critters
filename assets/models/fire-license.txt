@@ -1,0 +1,11 @@
+Model Information:
+* title:	fire
+* source:	https://sketchfab.com/3d-models/fire-8161ae32b81446b397a0efcd36796753
+* author:	Edgar_koh (https://sketchfab.com/edgar_koh)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "fire" (https://sketchfab.com/3d-models/fire-8161ae32b81446b397a0efcd36796753) by Edgar_koh (https://sketchfab.com/edgar_koh) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
