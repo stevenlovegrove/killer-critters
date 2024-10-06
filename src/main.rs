@@ -167,6 +167,7 @@ fn setup_per_game(
         transform.translation =
             Vec3::new(starting_position.x as f32, 0.0, starting_position.y as f32);
         commands.entity(entity).insert(Alive {});
+        commands.entity(entity).insert(Visibility::Visible);
         player.reset();
     }
 }
@@ -319,31 +320,39 @@ fn process_inputs(
     query_children: &Query<&Children>,
     mut tiles: &mut ParamSet<(Query<&Tile>, Query<&mut Tile>)>,
     query_player: &mut Query<(Entity, &mut Transform, &mut Player), Without<Map>>,
+    alive_query: &Query<(), With<Alive>>,
     mut query_transitions: &mut Query<(&mut AnimationTransitions, &mut AnimationPlayer)>,
 ) {
     'outer: for (controller, control) in inputs {
         for (entity, mut transform, mut player) in query_player.iter_mut() {
             if player.controller == *controller {
-                control_player(
-                    control,
-                    (entity, &mut transform, &mut player),
-                    &query_children,
-                    &maps,
-                    &mut tiles,
-                    &mut query_transitions,
-                );
+                if alive_query.get(entity).is_ok() {
+                    control_player(
+                        control,
+                        (entity, &mut transform, &mut player),
+                        &query_children,
+                        &maps,
+                        &mut tiles,
+                        &mut query_transitions,
+                    );
+                }
                 continue 'outer;
             }
         }
 
         // unhandled input - let's create a player
         let player_index = query_player.iter().count();
+        if player_index >= MODEL_ANIMAL_PATH.len() {
+            continue;
+        }
 
-        println!("Creating player {}, {:?}", player_index, *controller);
         let mut transform = Transform::default();
 
         // lookup spawn point
         if let Ok((_, map)) = maps.get_single() {
+            if player_index >= map.spawn_points().len() {
+                continue;
+            }
             let starting_position = map.spawn_points()[player_index];
             transform = Transform::from_translation(vec3_xz(Vec2::new(starting_position.x as f32, starting_position.y as f32)));
         }
@@ -373,6 +382,7 @@ fn keyboard_control(
     query_children: Query<&Children>,
     mut tiles: ParamSet<(Query<&Tile>, Query<&mut Tile>)>,
     mut query_player: Query<(Entity, &mut Transform, &mut Player), Without<Map>>,
+    alive_query: Query<(), With<Alive>>,
     mut query_transitions: Query<(&mut AnimationTransitions, &mut AnimationPlayer)>,
 ) {
     struct KeyMap {
@@ -449,6 +459,7 @@ fn keyboard_control(
         &query_children,
         &mut tiles,
         &mut query_player,
+        &alive_query,
         &mut query_transitions,
     );
 }
@@ -464,6 +475,7 @@ fn gamepad_events(
     query_children: Query<&Children>,
     mut tiles: ParamSet<(Query<&Tile>, Query<&mut Tile>)>,
     mut query_player: Query<(Entity, &mut Transform, &mut Player), Without<Map>>,
+    alive_query: Query<(), With<Alive>>,
     mut query_transitions: Query<(&mut AnimationTransitions, &mut AnimationPlayer)>,
 ) {
     let mut inputs = HashMap::new();
@@ -500,6 +512,7 @@ fn gamepad_events(
         &query_children,
         &mut tiles,
         &mut query_player,
+        &alive_query,
         &mut query_transitions,
     );
 }
@@ -619,7 +632,7 @@ fn map_transitions(
 
 fn check_for_death(
     mut commands: Commands,
-    mut players: Query<(Entity, &mut Transform, &Player), Without<Map>>,
+    mut players: Query<(Entity, &mut Transform, &Player), (Without<Map>, With<Alive>)>,
     maps: Query<(&mut Transform, &Map), Without<Player>>,
     tiles: Query<&Tile>,
 ) {
@@ -633,6 +646,7 @@ fn check_for_death(
                 if let TileType::Explosion(_, _) = tile.tile_type {
                     // Remove alive component
                     commands.entity(player_entity).remove::<Alive>();
+                    commands.entity(player_entity).insert(Visibility::Hidden);
                 }
             }
         }
@@ -718,7 +732,7 @@ fn restart_game(
 }
 
 fn check_pickup(
-    mut query_players: Query<(&Transform, &mut Player), Without<Map>>,
+    mut query_players: Query<(&Transform, &mut Player), (Without<Map>, With<Alive>)>,
     mut query_tiles: Query<&mut Tile>,
     query_maps: Query<(&mut Transform, &Map), Without<Player>>,
 ) {
