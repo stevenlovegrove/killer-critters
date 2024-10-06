@@ -18,5 +18,7 @@ web-time = "1.1.0"
 [profile.dev]
 opt-level = 1
 
-[profile.dev.package."*"]
+# Add these new profile configurations
+[profile.dev.package.bevy]
 opt-level = 3
+debug = false

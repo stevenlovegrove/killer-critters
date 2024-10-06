@@ -1,8 +1,8 @@
+use bevy::{animation::animate_targets, pbr::CascadeShadowConfigBuilder, prelude::*};
 use killer_critters::{
     basic::*, bevy_tree_query::*, map::*, models::*, player::*, sdf::*, tile::*, tile_factory::*,
 };
-use bevy::{animation::animate_targets, pbr::CascadeShadowConfigBuilder, prelude::*};
-use std::f32::consts::PI;
+use std::{collections::HashMap, f32::consts::PI};
 use web_time::{Duration, Instant};
 
 const PER_FRAME_MOTION: f32 = TILE_SIZE / 20.0;
@@ -67,7 +67,6 @@ fn main() {
             (
                 setup_scene_once_loaded.before(animate_targets),
                 keyboard_control,
-                keyboard_debug,
                 gamepad_events,
                 update_tile_graphics,
                 map_transitions,
@@ -92,12 +91,12 @@ fn setup_once(
     mut animation_graphs: ResMut<Assets<AnimationGraph>>,
 ) {
     commands.spawn(AudioBundle {
-            source: asset_server.load("sound/Vicious.ogg"),
-            settings: PlaybackSettings {
-                mode: bevy::audio::PlaybackMode::Loop,
-                ..default()
-            },
-        });
+        source: asset_server.load("sound/Vicious.ogg"),
+        settings: PlaybackSettings {
+            mode: bevy::audio::PlaybackMode::Loop,
+            ..default()
+        },
+    });
 
     let audio_assets = AudioAssets {
         explosion_sound: asset_server.load("sound/smoke-bomb-6761.ogg"),
@@ -144,29 +143,6 @@ fn setup_once(
         ..default()
     });
 
-    // Animal
-    for i in 0..2 {
-        commands.spawn((
-            SceneBundle {
-                scene: asset_server.load(GltfAssetLabel::Scene(0).from_asset(MODEL_ANIMAL_PATH[i])),
-                ..default()
-            },
-            Player {
-                controller: match i {
-                    0 => PlayerController::KeyboardArrows,
-                    1 => PlayerController::KeyboardWASD,
-                    2 => PlayerController::Gamepad(0),
-                    _ => PlayerController::Gamepad(1),
-                },
-                ..Default::default()
-            },
-            animation_graphs.add(AnimalAnimation::load_graph(
-                &asset_server,
-                MODEL_ANIMAL_PATH[i],
-            )),
-        ));
-    }
-
     next_state.set(GameState::Playing);
 }
 
@@ -185,14 +161,13 @@ fn setup_per_game(
     ));
 
     // Reset character positions
-    let mut starting_positions = starting_positions.iter();
     for (entity, mut transform, mut player) in &mut player_query {
-        let starting_position = starting_positions.next().unwrap();
+
+        let starting_position = starting_positions[player.player_index];
         transform.translation =
             Vec3::new(starting_position.x as f32, 0.0, starting_position.y as f32);
         commands.entity(entity).insert(Alive {});
-        player.num_bombs = Player::default().num_bombs;
-        player.firepower = Player::default().firepower;
+        player.reset();
     }
 }
 
@@ -335,7 +310,64 @@ fn control_player(
     );
 }
 
+fn process_inputs(
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+    animation_graphs: &mut ResMut<Assets<AnimationGraph>>,
+    inputs: &HashMap<PlayerController, PlayerControl>,
+    maps: &Query<(&Transform, &Map), Without<Player>>,
+    query_children: &Query<&Children>,
+    mut tiles: &mut ParamSet<(Query<&Tile>, Query<&mut Tile>)>,
+    query_player: &mut Query<(Entity, &mut Transform, &mut Player), Without<Map>>,
+    mut query_transitions: &mut Query<(&mut AnimationTransitions, &mut AnimationPlayer)>,
+) {
+    'outer: for (controller, control) in inputs {
+        for (entity, mut transform, mut player) in query_player.iter_mut() {
+            if player.controller == *controller {
+                control_player(
+                    control,
+                    (entity, &mut transform, &mut player),
+                    &query_children,
+                    &maps,
+                    &mut tiles,
+                    &mut query_transitions,
+                );
+                continue 'outer;
+            }
+        }
+
+        // unhandled input - let's create a player
+        let player_index = query_player.iter().count();
+
+        println!("Creating player {}, {:?}", player_index, *controller);
+        let mut transform = Transform::default();
+
+        // lookup spawn point
+        if let Ok((_, map)) = maps.get_single() {
+            let starting_position = map.spawn_points()[player_index];
+            transform = Transform::from_translation(vec3_xz(Vec2::new(starting_position.x as f32, starting_position.y as f32)));
+        }
+
+        commands.spawn((
+            SceneBundle {
+                scene: asset_server.load(GltfAssetLabel::Scene(0).from_asset(MODEL_ANIMAL_PATH[player_index])),
+                transform,
+                ..default()
+            },
+            Player::new(player_index, *controller),
+            animation_graphs.add(AnimalAnimation::load_graph(
+                &asset_server,
+                MODEL_ANIMAL_PATH[player_index],
+            )),
+            Alive {},
+        ));
+    }
+}
+
 fn keyboard_control(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut animation_graphs: ResMut<Assets<AnimationGraph>>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     maps: Query<(&Transform, &Map), Without<Player>>,
     query_children: Query<&Children>,
@@ -343,100 +375,89 @@ fn keyboard_control(
     mut query_player: Query<(Entity, &mut Transform, &mut Player), Without<Map>>,
     mut query_transitions: Query<(&mut AnimationTransitions, &mut AnimationPlayer)>,
 ) {
-    let mut control_arrows = PlayerControl {
-        motion: Vec2::ZERO,
-        action: PlayerAction::None,
-    };
-    let mut control_wasd = PlayerControl {
-        motion: Vec2::ZERO,
-        action: PlayerAction::None,
-    };
-
-    {
-        if keyboard_input.pressed(KeyCode::ArrowUp) {
-            control_arrows.motion.y -= 1.0;
-        }
-        if keyboard_input.pressed(KeyCode::ArrowDown) {
-            control_arrows.motion.y += 1.0;
-        }
-
-        if keyboard_input.pressed(KeyCode::ArrowLeft) {
-            control_arrows.motion.x -= 1.0;
-        }
-        if keyboard_input.pressed(KeyCode::ArrowRight) {
-            control_arrows.motion.x += 1.0;
-        }
-
-        if keyboard_input.just_pressed(KeyCode::Space) {
-            control_arrows.action = PlayerAction::DropBomb;
-        }
-
-        if control_arrows.motion.length() > 0.0 {
-            control_arrows.motion = control_arrows.motion.normalize();
-        }
-    }
-    {
-        if keyboard_input.pressed(KeyCode::KeyW) {
-            control_wasd.motion.y -= 1.0;
-        }
-        if keyboard_input.pressed(KeyCode::KeyS) {
-            control_wasd.motion.y += 1.0;
-        }
-
-        if keyboard_input.pressed(KeyCode::KeyA) {
-            control_wasd.motion.x -= 1.0;
-        }
-        if keyboard_input.pressed(KeyCode::KeyD) {
-            control_wasd.motion.x += 1.0;
-        }
-
-        if keyboard_input.just_pressed(KeyCode::KeyQ) {
-            control_wasd.action = PlayerAction::DropBomb;
-        }
-
-        if control_wasd.motion.length() > 0.0 {
-            control_wasd.motion = control_wasd.motion.normalize();
-        }
+    struct KeyMap {
+        up: KeyCode,
+        down: KeyCode,
+        left: KeyCode,
+        right: KeyCode,
+        action: KeyCode,
     }
 
-    for (entity, mut transform, mut player) in &mut query_player {
-        if player.controller == PlayerController::KeyboardArrows {
-            control_player(
-                &control_arrows,
-                (entity, &mut transform, &mut player),
-                &query_children,
-                &maps,
-                &mut tiles,
-                &mut query_transitions,
-            );
-        } else if player.controller == PlayerController::KeyboardWASD {
-            control_player(
-                &control_wasd,
-                (entity, &mut transform, &mut player),
-                &query_children,
-                &maps,
-                &mut tiles,
-                &mut query_transitions,
-            );
-        }
-    }
-}
+    const PLAYER_KEYS: [(PlayerController, KeyMap); 2] = [
+        (
+            PlayerController::KeyboardArrows,
+            KeyMap {
+                up: KeyCode::ArrowUp,
+                down: KeyCode::ArrowDown,
+                left: KeyCode::ArrowLeft,
+                right: KeyCode::ArrowRight,
+                action: KeyCode::Space,
+            },
+        ),
+        (
+            PlayerController::KeyboardWASD,
+            KeyMap {
+                up: KeyCode::KeyW,
+                down: KeyCode::KeyS,
+                left: KeyCode::KeyA,
+                right: KeyCode::KeyD,
+                action: KeyCode::KeyQ,
+            },
+        ),
+    ];
 
-fn keyboard_debug(
-    mut commands: Commands,
-    mut images: ResMut<Assets<Image>>,
-    keyboard_input: Res<ButtonInput<KeyCode>>,
-    maps: Query<(&Transform, &Map), Without<Player>>,
-    mut tiles: ParamSet<(Query<&Tile>, Query<&mut Tile>)>,
-) {
-    for (_, map) in &maps {
-        if keyboard_input.just_pressed(KeyCode::KeyM) {
-            spawn_sdf_texture(&mut commands, &mut images, map, &tiles.p0());
+    let mut inputs = HashMap::new();
+
+    for (controller, key_map) in PLAYER_KEYS {
+        let mut control = PlayerControl {
+            motion: Vec2::ZERO,
+            action: PlayerAction::None,
+        };
+
+        if keyboard_input.pressed(key_map.up) {
+            control.motion.y -= 1.0;
+        }
+        if keyboard_input.pressed(key_map.down) {
+            control.motion.y += 1.0;
+        }
+        if keyboard_input.pressed(key_map.left) {
+            control.motion.x -= 1.0;
+        }
+        if keyboard_input.pressed(key_map.right) {
+            control.motion.x += 1.0;
+        }
+
+        if keyboard_input.just_pressed(key_map.action) {
+            control.action = PlayerAction::DropBomb;
+        }
+
+        if control.motion.length() > 0.0 {
+            control.motion = control.motion.normalize();
+        }
+
+        if control.is_something() {
+            inputs.insert(controller, control);
         }
     }
+
+    process_inputs(
+        &mut commands,
+        &asset_server,
+        &mut animation_graphs,
+        &inputs,
+        &maps,
+        &query_children,
+        &mut tiles,
+        &mut query_player,
+        &mut query_transitions,
+    );
 }
 
 fn gamepad_events(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut animation_graphs: ResMut<Assets<AnimationGraph>>,
+    gamepads: Res<Gamepads>,
     axes: Res<Axis<GamepadAxis>>,
     buttons: Res<ButtonInput<GamepadButton>>,
     maps: Query<(&Transform, &Map), Without<Player>>,
@@ -445,39 +466,42 @@ fn gamepad_events(
     mut query_player: Query<(Entity, &mut Transform, &mut Player), Without<Map>>,
     mut query_transitions: Query<(&mut AnimationTransitions, &mut AnimationPlayer)>,
 ) {
-    let mut control = PlayerControl {
-        motion: Vec2::ZERO,
-        action: PlayerAction::None,
-    };
+    let mut inputs = HashMap::new();
 
-    for axis in axes.devices() {
-        let value = axes.get(*axis).unwrap();
-        match axis.axis_type {
-            GamepadAxisType::LeftStickX => control.motion.x += value,
-            GamepadAxisType::LeftStickY => control.motion.y -= value,
-            _ => {}
+    for gamepad in gamepads.iter() {
+        let mut control = PlayerControl {
+            motion: Vec2::ZERO,
+            action: PlayerAction::None,
+        };
+
+        // Process axes
+        if let (Some(x), Some(y)) = (
+            axes.get(GamepadAxis::new(gamepad, GamepadAxisType::LeftStickX)),
+            axes.get(GamepadAxis::new(gamepad, GamepadAxisType::LeftStickY)),
+        ) {
+            control.motion.x += x;
+            control.motion.y -= y;
         }
-    }
 
-    if buttons.just_pressed(GamepadButton {
-        gamepad: Gamepad::new(0),
-        button_type: GamepadButtonType::South,
-    }) {
-        control.action = PlayerAction::DropBomb;
-    }
-
-    for (entity, mut transform, mut player) in &mut query_player {
-        if player.controller == PlayerController::Gamepad(0) {
-            control_player(
-                &control,
-                (entity, &mut transform, &mut player),
-                &query_children,
-                &maps,
-                &mut tiles,
-                &mut query_transitions,
-            );
+        // Process buttons
+        if buttons.just_pressed(GamepadButton::new(gamepad, GamepadButtonType::South)) {
+            control.action = PlayerAction::DropBomb;
         }
+
+        inputs.insert(PlayerController::Gamepad(gamepad.id), control);
     }
+
+    process_inputs(
+        &mut commands,
+        &asset_server,
+        &mut animation_graphs,
+        &inputs,
+        &maps,
+        &query_children,
+        &mut tiles,
+        &mut query_player,
+        &mut query_transitions,
+    );
 }
 
 fn update_tile_graphics(
@@ -530,13 +554,11 @@ fn map_transitions(
             match tile_data.tile_type.clone() {
                 TileType::Bomb(Some(bomb)) => {
                     if Instant::now() > bomb.when_to_explode {
-                        commands.spawn((
-                            AudioBundle {
-                                source: audio_assets.explosion_sound.clone(),
-                                settings: PlaybackSettings::DESPAWN,
-                                ..default()
-                            },
-                        ));
+                        commands.spawn((AudioBundle {
+                            source: audio_assets.explosion_sound.clone(),
+                            settings: PlaybackSettings::DESPAWN,
+                            ..default()
+                        },));
 
                         // Explode the bomb
                         tile_data.tile_type = TileType::Explosion(
@@ -619,30 +641,36 @@ fn check_for_death(
 
 fn check_for_win(
     mut next_state: ResMut<NextState<GameState>>,
-    query_player: Query<(Entity, &Transform, &Player), With<Alive>>,
+    query_alive: Query<(Entity, &Transform, &Player), With<Alive>>,
+    query_dead: Query<(Entity, &Transform, &Player), Without<Alive>>,
     query_children: Query<&Children>,
     mut query_transitions: Query<(&mut AnimationTransitions, &mut AnimationPlayer)>,
 ) {
-    let player_count = query_player.iter().count();
-    if player_count == 1 {
-        if let Ok((player_entity, _, _)) = query_player.get_single() {
-            let target_animation = AnimalAnimation::Jump.to_node_index();
+    let num_alive = query_alive.iter().count();
+    let num_dead = query_dead.iter().count();
+    let num_players = num_alive + num_dead;
 
-            play_animation(
-                player_entity,
-                target_animation,
-                Duration::from_millis(400),
-                true,
-                &query_children,
-                &mut query_transitions,
-            );
+    if num_players > 1 {
+        if num_alive == 1 {
+            if let Ok((player_entity, _, _)) = query_alive.get_single() {
+                let target_animation = AnimalAnimation::Jump.to_node_index();
 
-            // Transition to GameOver state
+                play_animation(
+                    player_entity,
+                    target_animation,
+                    Duration::from_millis(400),
+                    true,
+                    &query_children,
+                    &mut query_transitions,
+                );
+
+                // Transition to GameOver state
+                next_state.set(GameState::GameOver);
+            }
+        } else if num_alive == 0 {
+            // Draw
             next_state.set(GameState::GameOver);
         }
-    } else if player_count == 0 {
-        // Draw
-        next_state.set(GameState::GameOver);
     }
 }
 
