@@ -192,7 +192,7 @@ fn setup_scene_once_loaded(
                 .insert(graph.clone())
                 .insert(transitions);
         } else {
-            println!(
+            eprintln!(
                 "No AnimationGraph component found for entity with AnimationPlayer (`{}`).",
                 entity
             );
@@ -340,6 +340,11 @@ fn process_inputs(
             }
         }
 
+        if !control.is_something() {
+            // wait until it's actually used
+            continue;
+        }
+
         // unhandled input - let's create a player
         let player_index = query_player.iter().count();
         if player_index >= MODEL_ANIMAL_PATH.len() {
@@ -351,6 +356,7 @@ fn process_inputs(
         // lookup spawn point
         if let Ok((_, map)) = maps.get_single() {
             if player_index >= map.spawn_points().len() {
+                eprintln!("No spawn point for player {}", player_index);
                 continue;
             }
             let starting_position = map.spawn_points()[player_index];
@@ -370,6 +376,9 @@ fn process_inputs(
             )),
             Alive {},
         ));
+
+        // only add one player per iteration
+        return;
     }
 }
 
@@ -445,9 +454,7 @@ fn keyboard_control(
             control.motion = control.motion.normalize();
         }
 
-        if control.is_something() {
-            inputs.insert(controller, control);
-        }
+        inputs.insert(controller, control);
     }
 
     process_inputs(

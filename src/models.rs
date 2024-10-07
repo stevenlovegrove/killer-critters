@@ -15,10 +15,14 @@ pub const MODEL_CUBE_PATH2: &str = "models/cube2.glb";
 pub const MODEL_CUBE_PATH3: &str = "models/cube3.glb";
 pub const MODEL_FLAT_FLAME_PATH: &str = "models/flat-flame.glb";
 pub const MODEL_FLAT_BOMB_PATH: &str = "models/flat-bomb.glb";
-pub const MODEL_ANIMAL_PATH: [&str; 3] = [
+pub const MODEL_ANIMAL_PATH: [&str; 7] = [
+    "models/Inkfish_Animations.glb",
     "models/Colobus_Animations.glb",
     "models/Pudu_Animations.glb",
-    "models/Inkfish_Animations.glb",
+    "models/Gecko_Animations.glb",
+    "models/Sparrow_Animations.glb",
+    "models/Taipan_Animations.glb",
+    "models/Muskrat_Animations.glb",
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, EnumIter, Debug)]
