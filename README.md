@@ -86,7 +86,14 @@ cargo install --locked miniserve
 miniserve . --open
 ```
 
+###### Bundle into Application (MacOS)
 
+To create a MacOS Application bundle:
+
+```
+cargo bundle --release
+cargo install cargo-bundle
+```
 
 ### Contributions
 

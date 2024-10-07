@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { git="https://github.com/bevyengine/bevy.git", branch="main", features = ["dynamic_linking", "jpeg"]}
+bevy = { git="https://github.com/bevyengine/bevy.git", branch="main", features = ["jpeg"]}
 rand = "0.8"
 log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
 strum = "0.26"
@@ -22,3 +22,16 @@ opt-level = 1
 [profile.dev.package.bevy]
 opt-level = 3
 debug = false
+
+[package.metadata.bundle]
+name = "KillerCritters"
+identifier = "com.stevenlovegrove.killer-critters"
+icon = ["assets/icon/icon-128.png", "assets/icon/icon-256.png"]
+version = "1.0.0"
+resources = ["assets"]
+copyright = "Copyright (c) Steven Lovegrove 2024. All rights reserved."
+category = "Game"
+short_description = "Bomberman inspired multiplayer game"
+long_description = """
+A simple and fun multiplayer mega bomberman inspired game written in Rust using the Bevy game engine.
+"""

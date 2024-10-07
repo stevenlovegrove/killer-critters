@@ -2,7 +2,7 @@ use bevy::{animation::animate_targets, pbr::CascadeShadowConfigBuilder, prelude:
 use killer_critters::{
     basic::*, bevy_tree_query::*, map::*, models::*, player::*, sdf::*, tile::*, tile_factory::*,
 };
-use std::{collections::HashMap, f32::consts::PI};
+use std::{collections::HashMap, f32::consts::PI, path::PathBuf};
 use web_time::{Duration, Instant};
 
 const PER_FRAME_MOTION: f32 = TILE_SIZE / 20.0;
@@ -23,6 +23,27 @@ const MAP_DIMENSIONS: (usize, usize) = (19, 13);
 #[derive(Resource)]
 struct AudioAssets {
     explosion_sound: Handle<AudioSource>,
+}
+
+// macos only
+#[cfg(target_os = "macos")]
+fn get_asset_path() -> String {
+    if let Ok(exe_path) = std::env::current_exe() {
+        let mut asset_path = exe_path;
+        // Navigate to the Resources directory inside the app bundle
+        asset_path.pop(); // Remove the executable name
+        asset_path.pop(); // Remove the MacOS folder
+        asset_path.push("Resources"); // Go to the Resources folder
+        asset_path.push("assets"); // Go to the Resources folder
+        return asset_path.to_string_lossy().to_string();
+    }
+    "assets".to_string() // Fallback to the default "assets" folder
+}
+
+// Not macos
+#[cfg(not(target_os = "macos"))]
+fn get_asset_path() -> String {
+    "assets".to_string()
 }
 
 fn main() {
@@ -56,10 +77,17 @@ fn main() {
             color: Color::WHITE,
             brightness: 2000.,
         })
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(window),
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(window),
+                    ..default()
+                })
+                .set(AssetPlugin {
+                    file_path: get_asset_path(),
+                    ..default()
+                }),
+        )
         .add_systems(Startup, setup_once)
         .add_systems(OnEnter(GameState::Playing), setup_per_game)
         .add_systems(
@@ -162,7 +190,6 @@ fn setup_per_game(
 
     // Reset character positions
     for (entity, mut transform, mut player) in &mut player_query {
-
         let starting_position = starting_positions[player.player_index];
         transform.translation =
             Vec3::new(starting_position.x as f32, 0.0, starting_position.y as f32);
@@ -360,12 +387,16 @@ fn process_inputs(
                 continue;
             }
             let starting_position = map.spawn_points()[player_index];
-            transform = Transform::from_translation(vec3_xz(Vec2::new(starting_position.x as f32, starting_position.y as f32)));
+            transform = Transform::from_translation(vec3_xz(Vec2::new(
+                starting_position.x as f32,
+                starting_position.y as f32,
+            )));
         }
 
         commands.spawn((
             SceneBundle {
-                scene: asset_server.load(GltfAssetLabel::Scene(0).from_asset(MODEL_ANIMAL_PATH[player_index])),
+                scene: asset_server
+                    .load(GltfAssetLabel::Scene(0).from_asset(MODEL_ANIMAL_PATH[player_index])),
                 transform,
                 ..default()
             },
