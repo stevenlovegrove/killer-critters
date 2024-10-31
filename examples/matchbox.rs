@@ -6,8 +6,12 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() {
+    // make the ip address a command line parameter
+    let ip = std::env::args().nth(1).expect("Usage: matchbox <ip>");
+    let addr = format!("ws://{}:3536/", ip);
+
     info!("Connecting to matchbox");
-    let (mut socket, loop_fut) = WebRtcSocket::new_reliable("ws://localhost:3536/");
+    let (mut socket, loop_fut) = WebRtcSocket::new_reliable(addr);
 
     let loop_fut = loop_fut.fuse();
     futures::pin_mut!(loop_fut);
