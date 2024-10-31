@@ -4,12 +4,21 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { git="https://github.com/bevyengine/bevy.git", branch="main", features = ["jpeg"]}
+bevy = { git = "https://github.com/bevyengine/bevy.git", branch = "main", features = [
+    "jpeg",
+] }
 rand = "0.8"
-log = { version = "*", features = ["max_level_debug", "release_max_level_warn"] }
+log = { version = "*", features = [
+    "max_level_debug",
+    "release_max_level_warn",
+] }
 strum = "0.26"
 strum_macros = "0.26"
 zerocopy = "0.7.35"
+matchbox_socket = { git = "https://github.com/johanhelsing/matchbox.git", branch = "main" }
+futures-timer = { version = "3" }
+futures = { version = "0.3", default-features = false }
+tokio = { version = "1", features = ["full"] }
 
 # std::time::Instant and family don't work for target "wasm32-unknown-unknown"
 # web-time is an API compatible replacement
